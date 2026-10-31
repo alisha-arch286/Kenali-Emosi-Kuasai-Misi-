@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LIGHTNING TEACHER – THUNDER LOCK</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- MediaPipe Hands & Camera Utils CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Outfit:wght@400;600;800&display=swap');
+
+    body {
+      font-family: 'Fredoka', sans-serif;
+      background: radial-gradient(circle at center, #1e1b4b 0%, #0f172a 100%);
+      color: #f8fafc;
+      overflow-x: hidden;
+      user-select: none;
+    }
+
+    /* Kesan Glowing & Petir CSS */
+    .glow-yellow {
+      box-shadow: 0 0 25px rgba(250, 204, 21, 0.6), inset 0 0 15px rgba(250, 204, 21, 0.4);
+    }
+    .glow-cyan {
+      box-shadow: 0 0 25px rgba(6, 182, 212, 0.6), inset 0 0 15px rgba(6, 182, 212, 0.4);
+    }
+    .glow-purple {
+      box-shadow: 0 0 25px rgba(168, 85, 247, 0.5);
+    }
+    .glow-red {
+      box-shadow: 0 0 25px rgba(239, 68, 68, 0.7);
+    }
+
+    .text-glow {
+      text-shadow: 0 0 12px rgba(250, 204, 21, 0.8);
+    }
+
+    /* Animasi Denyutan Mengunci Jawapan */
+    @keyframes lockPulse {
+      0% { transform: scale(1); border-color: #facc15; }
+      50% { transform: scale(1.03); border-color: #38bdf8; box-shadow: 0 0 35px #38bdf8; }
+      100% { transform: scale(1); border-color: #facc15; }
+    }
+    .locking-card {
+      animation: lockPulse 0.8s infinite ease-in-out;
+    }
+
+    /* Animasi Kebas / Gegar apabila kena petir */
+    @keyframes shake {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      20% { transform: translate(-6px, 4px) rotate(-2deg); }
+      40% { transform: translate(6px, -4px) rotate(2deg); }
+      60% { transform: translate(-4px, -2px) rotate(-1deg); }
+      80% { transform: translate(4px, 2px) rotate(1deg); }
+    }
+    .shake-effect {
+      animation: shake 0.4s ease-in-out;
+    }
+
+    /* Bar Penunjuk Lock (Progress bar circular / linear) */
+    .lock-progress-bar {
+      transition: width 0.1s linear;
+    }
+
+    /* Cermin Kamera */
+    .mirror {
+      transform: scaleX(-1);
+    }
+
+    /* Canvas FX Overlay */
+    #fxCanvas {
+      pointer-events: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 50;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between p-2 md:p-4 text-slate-100">
+
+  <!-- FX Canvas untuk Sambaran Petir & Particle -->
+  <canvas id="fxCanvas"></canvas>
+
+  <!-- Penunjuk Kedudukan Tangan (Cursor Mirroring) -->
+  <div id="handCursor" class="fixed w-12 h-12 rounded-full border-4 border-yellow-400 bg-cyan-400/40 pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 hidden flex items-center justify-center shadow-lg transition-transform duration-75">
+    <span id="cursorIcon" class="text-xl">✋</span>
+    <div id="cursorRing" class="absolute inset-0 rounded-full border-2 border-dashed border-white animate-spin"></div>
+  </div>
+
+  <!-- CONTAINER UTAMA -->
+  <div class="w-full max-w-5xl mx-auto flex flex-col min-h-[95vh] justify-between z-10 relative">
+    
+    <!-- HEADER & DASHBOARD -->
+    <header class="bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-slate-700/60 shadow-xl mb-4">
+      <div class="flex flex-wrap justify-between items-center gap-3">
+        
+        <!-- Tajuk & Tagline Ringkas -->
+        <div>
+          <h1 class="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-cyan-400 tracking-wider">
+            ⚡ LIGHTNING TEACHER
+          </h1>
+          <p class="text-xs md:text-sm text-cyan-300 font-semibold">THUNDER LOCK – Kenali Emosi & Lancarkan Petir!</p>
+        </div>
+
+        <!-- Info Permainan (Skor, Masa, Nyawa) -->
+        <div id="gameStats" class="flex items-center gap-3 md:gap-6 bg-slate-800/90 px-4 py-2 rounded-xl border border-slate-700">
+          
+          <!-- Soalan -->
+          <div class="text-center">
+            <span class="text-xs text-slate-400 block uppercase font-bold">Soalan</span>
+            <span id="questionNum" class="text-lg md:text-xl font-extrabold text-amber-400">1/10</span>
+          </div>
+          
+          <div class="w-px h-8 bg-slate-700"></div>
+
+          <!-- Skor -->
+          <div class="text-center">
+            <span class="text-xs text-slate-400 block uppercase font-bold">Mata</span>
+            <span id="scoreText" class="text-lg md:text-xl font-extrabold text-cyan-400">0</span>
+          </div>
+
+          <div class="w-px h-8 bg-slate-700"></div>
+
+          <!-- Masa -->
+          <div class="text-center">
+            <span class="text-xs text-slate-400 block uppercase font-bold">Masa</span>
+            <span id="timerText" class="text-lg md:text-xl font-extrabold text-yellow-300">10:00</span>
+          </div>
+
+          <div class="w-px h-8 bg-slate-700"></div>
+
+          <!-- Nyawa -->
+          <div class="text-center">
+            <span class="text-xs text-slate-400 block uppercase font-bold">Nyawa</span>
+            <div id="livesContainer" class="flex gap-1 text-lg md:text-xl">
+              <span class="heart">❤️</span>
+              <span class="heart">❤️</span>
+              <span class="heart">❤️</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </header>
+
+    <!-- ZON KANDUNGAN UTAMA (SOALAN & WEBCAM) -->
+    <main class="grid grid-cols-1 md:grid-cols-3 gap-4 flex-grow items-center">
+      
+      <!-- RUANGAN SOALAN & PADA (2/3 Skrin Desktop) -->
+      <div class="md:col-span-2 flex flex-col justify-between h-full gap-4">
+        
+        <!-- Kad Soalan -->
+        <div class="bg-gradient-to-br from-slate-900/90 to-indigo-950/90 p-5 md:p-6 rounded-3xl border-2 border-indigo-500/40 shadow-2xl relative overflow-hidden flex flex-col justify-center min-h-[160px]">
+          <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-cyan-500/10 rounded-full blur-xl pointer-events-none"></div>
+          <span class="text-xs font-bold uppercase tracking-wider text-cyan-400 mb-1">Pilih Emosi Yang Betul:</span>
+          <h2 id="questionText" class="text-lg md:text-2xl font-bold text-white leading-relaxed">
+            Memuat turun soalan...
+          </h2>
+        </div>
+
+        <!-- Kad Pilihan Jawapan (3 Pilihan) -->
+        <div id="optionsContainer" class="grid grid-cols-1 gap-3 md:gap-4 my-auto">
+          <!-- Dibina secara dinamik melalui JS -->
+        </div>
+
+        <!-- Bar Panduan Kawalan Gesture Semasa -->
+        <div class="bg-slate-900/80 rounded-xl p-3 border border-slate-700 flex items-center justify-between text-xs md:text-sm">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">✋</span>
+            <span>Halakan tapak tangan <b>1 saat</b> untuk mengunci.</span>
+          </div>
+          <div class="flex items-center gap-2 text-yellow-300">
+            <span class="text-xl">✊</span>
+            <span>Genggam tangan untuk <b>SERANG!</b></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RUANGAN WEBCAM & DETEKSI HAND TRACKING (1/3 Skrin Desktop) -->
+      <div class="flex flex-col items-center justify-start h-full gap-3">
+        <div class="relative w-full aspect-video md:aspect-[4/3] bg-slate-950 rounded-2xl border-2 border-cyan-500/50 shadow-xl overflow-hidden flex items-center justify-center group">
+          
+          <!-- Video Stream Webcam (Tersembunyi secara visual, dilukis di canvas) -->
+          <video id="webcamVideo" class="hidden" playsinline></video>
+          
+          <!-- Canvas Paparan Webcam Mirror -->
+          <canvas id="webcamCanvas" class="w-full h-full object-cover mirror"></canvas>
+          
+          <!-- Status Kamera & Overlay -->
+          <div id="camStatusOverlay" class="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center p-4 text-center">
+            <span class="text-4xl mb-2">📷</span>
+            <p id="camStatusText" class="text-sm font-semibold text-slate-300">Kamera Belum Diaktifkan</p>
+            <p class="text-xs text-slate-500 mt-1">Tekan "MULA PERMAINAN" untuk membenarkan kamera.</p>
+          </div>
+
+          <!-- Indicator Landmark Tangan Aktif -->
+          <div id="gestureBadge" class="absolute top-2 left-2 bg-slate-900/90 text-yellow-400 border border-yellow-500/40 px-3 py-1 rounded-full text-xs font-bold hidden flex items-center gap-1 shadow-md">
+            <span id="gestureBadgeIcon">✋</span>
+            <span id="gestureBadgeText">Tangan Dikesan</span>
+          </div>
+        </div>
+
+        <!-- Butang Salih Mod Tetikus Mod Darurat -->
+        <button id="toggleMouseBtn" class="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl text-xs font-semibold text-slate-300 transition flex items-center justify-center gap-2">
+          <span>🖱️</span> Gunakan Klik Tetikus / Skrin Sentuh
+        </button>
+      </div>
+
+    </main>
+
+    <!-- FOOTER HAK CIPTA -->
+    <footer class="mt-4 text-center text-xs text-slate-500">
+      LIGHTNING TEACHER &copy; Permainan Pendidikan Sosioemosi Kanak-Kanak Prasekolah
+    </footer>
+  </div>
+
+  <!-- ================= MODAL PERMULAAN / START SCREEN ================= -->
+  <div id="startModal" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-lg flex items-center justify-center p-4">
+    <div class="bg-gradient-to-b from-slate-900 to-indigo-950 border-2 border-yellow-400/50 rounded-3xl max-w-2xl w-full p-6 md:p-8 text-center shadow-2xl relative overflow-hidden">
+      
+      <!-- Hiasan Cahaya Latar -->
+      <div class="absolute -top-24 -left-24 w-48 h-48 bg-yellow-400/20 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-cyan-400/20 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="text-5xl md:text-6xl mb-2 animate-bounce">⚡</div>
+      <h1 class="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-cyan-300 tracking-wide mb-1">
+        LIGHTNING TEACHER
+      </h1>
+      <h2 class="text-xl md:text-2xl font-bold text-cyan-400 mb-4 tracking-wider">THUNDER LOCK</h2>
+      
+      <p class="text-sm md:text-base text-slate-300 max-w-lg mx-auto mb-6 leading-relaxed">
+        Bantu cikgu kilat mengenali emosi! Gunakan tapak tangan untuk <span class="text-yellow-300 font-bold">MENGUNCI JAWAPAN</span> dan genggam tangan untuk <span class="text-cyan-300 font-bold">MELANCARKAN PETIR!</span> ⚡
+      </p>
+
+      <!-- Butang Utam Permulaan -->
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-6">
+        <button id="startGameBtn" class="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-950 font-black text-lg md:text-xl rounded-2xl shadow-lg hover:shadow-yellow-400/50 transform hover:-translate-y-1 transition active:translate-y-0">
+          🚀 MULA PERMAINAN
+        </button>
+        <button id="howToPlayBtn" class="w-full sm:w-auto px-6 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-bold text-base rounded-2xl transition">
+          📖 CARA BERMAIN
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-400">
+        💡 Memerlukan akses Kamera / Webcam. Kanak-kanak juga boleh menggunakan Klik Tetikus/Sentuhan.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================= MODAL CARA BERMAIN ================= -->
+  <div id="howToModal" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-lg flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-xl w-full p-6 text-slate-200 shadow-2xl relative">
+      <h3 class="text-2xl font-black text-yellow-400 mb-4 flex items-center gap-2">
+        <span>📖</span> Panduan Bermain
+      </h3>
+
+      <div class="space-y-4 text-sm md:text-base">
+        <div class="flex items-start gap-3 bg-slate-800/60 p-3 rounded-xl border border-slate-700">
+          <span class="text-3xl">✋</span>
+          <div>
+            <h4 class="font-bold text-cyan-300">1. Pilih & Kunci Target</h4>
+            <p class="text-xs md:text-sm text-slate-300">Halakan penunjuk tapak tangan anda di atas kad jawapan selama 1 saat sehingga garisan kunci penuh.</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3 bg-slate-800/60 p-3 rounded-xl border border-slate-700">
+          <span class="text-3xl">✊</span>
+          <div>
+            <h4 class="font-bold text-yellow-300">2. Lancarkan Serangan Petir</h4>
+            <p class="text-xs md:text-sm text-slate-300">Selepas sasaran dikunci, genggam tangan anda (clench fist) atau tarik tangan ke belakang untuk menyambar jawapan!</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3 bg-slate-800/60 p-3 rounded-xl border border-slate-700">
+          <span class="text-3xl">❤️</span>
+          <div>
+            <h4 class="font-bold text-red-400">3. Nyawa & Masa</h4>
+            <p class="text-xs md:text-sm text-slate-300">Anda mempunyai 3 nyawa dan masa 10 minit untuk menyelesaikan 10 soalan emosi.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 text-center">
+        <button id="closeHowToBtn" class="px-6 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold rounded-xl transition">
+          Faham, Kembali!
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL TAMAT PERMAINAN / RESULTS ================= -->
+  <div id="endModal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 hidden">
+    <div class="bg-gradient-to-b from-slate-900 to-indigo-950 border-2 border-cyan-400/60 rounded-3xl max-w-lg w-full p-6 md:p-8 text-center shadow-2xl relative">
+      
+      <div id="endEmoji" class="text-6xl mb-2">🏆</div>
+      <h2 id="endTitle" class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-amber-400 mb-2">
+        TAHNIAH, MISI SELESAI!
+      </h2>
+      <p id="endSubtitle" class="text-sm text-slate-300 mb-6">Anda telah berjaya mendedahkan semua emosi!</p>
+
+      <!-- Keputusan Penuh -->
+      <div class="bg-slate-800/80 rounded-2xl p-4 border border-slate-700 grid grid-cols-2 gap-4 mb-6 text-left">
+        <div>
+          <span class="text-xs text-slate-400 block font-bold">JUMLAH MARKAH</span>
+          <span id="endScore" class="text-2xl font-black text-yellow-400">100</span>
+        </div>
+        <div>
+          <span class="text-xs text-slate-400 block font-bold">MASA DIGUNAKAN</span>
+          <span id="endTime" class="text-2xl font-black text-cyan-300">02:45</span>
+        </div>
+        <div>
+          <span class="text-xs text-slate-400 block font-bold">JAWAPAN BETUL</span>
+          <span id="endCorrect" class="text-xl font-bold text-emerald-400">10 / 10</span>
+        </div>
+        <div>
+          <span class="text-xs text-slate-400 block font-bold">JAWAPAN SALAH</span>
+          <span id="endWrong" class="text-xl font-bold text-rose-400">0</span>
+        </div>
+      </div>
+
+      <button id="restartGameBtn" class="w-full py-4 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-950 font-black text-lg rounded-2xl shadow-lg transition transform hover:scale-105">
+        🔄 MAIN SEMULA
+      </button>
+    </div>
+  </div>
+
+
+  <!-- LOGIK PERMAINAN & MEDIAPIPE JAVASCRIPT -->
+  <script>
+    /* ==========================================================================
+       1. DATA SOALAN (10 SOALAN SOSIOEMOSI)
+       ========================================================================== */
+    const questionsData = [
+      {
+        id: 1,
+        question: "Sara bermain bersama kawan-kawannya di taman permainan. Sara ketawa dan tersenyum.\nApakah emosi Sara?",
+        options: [
+          { text: "Gembira", emoji: "😊", isCorrect: true },
+          { text: "Sedih", emoji: "😢", isCorrect: false },
+          { text: "Takut", emoji: "😨", isCorrect: false }
+        ]
+      },
+      {
+        id: 2,
+        question: "Ali kehilangan permainan kegemarannya lalu menangis.\nApakah emosi Ali?",
+        options: [
+          { text: "Marah", emoji: "😡", isCorrect: false },
+          { text: "Sedih", emoji: "😢", isCorrect: true },
+          { text: "Gembira", emoji: "😊", isCorrect: false }
+        ]
+      },
+      {
+        id: 3,
+        question: "Aina berasa tidak puas hati apabila rakannya mengambil pensel warna tanpa meminta izin.\nApakah emosi Aina?",
+        options: [
+          { text: "Takut", emoji: "😨", isCorrect: false },
+          { text: "Gembira", emoji: "😊", isCorrect: false },
+          { text: "Marah", emoji: "😡", isCorrect: true }
+        ]
+      },
+      {
+        id: 4,
+        question: "Danish terdengar bunyi guruh yang kuat ketika hujan.\nApakah emosi Danish?",
+        options: [
+          { text: "Takut", emoji: "😨", isCorrect: true },
+          { text: "Sedih", emoji: "😢", isCorrect: false },
+          { text: "Gembira", emoji: "😊", isCorrect: false }
+        ]
+      },
+      {
+        id: 5,
+        question: "Mira menerima hadiah hari lahir daripada ibu bapanya. Dia tersenyum lebar.\nApakah emosi Mira?",
+        options: [
+          { text: "Marah", emoji: "😡", isCorrect: false },
+          { text: "Gembira", emoji: "😊", isCorrect: true },
+          { text: "Takut", emoji: "😨", isCorrect: false }
+        ]
+      },
+      {
+        id: 6,
+        question: "Hakim tidak dapat bermain bersama kawannya kerana kawannya sudah pulang.\nApakah emosi Hakim?",
+        options: [
+          { text: "Sedih", emoji: "😢", isCorrect: true },
+          { text: "Takut", emoji: "😨", isCorrect: false },
+          { text: "Marah", emoji: "😡", isCorrect: false }
+        ]
+      },
+      {
+        id: 7,
+        question: "Sofia berasa marah apabila menara blok yang dibinanya dirobohkan oleh rakannya.\nApakah emosi Sofia?",
+        options: [
+          { text: "Gembira", emoji: "😊", isCorrect: false },
+          { text: "Takut", emoji: "😨", isCorrect: false },
+          { text: "Marah", emoji: "😡", isCorrect: true }
+        ]
+      },
+      {
+        id: 8,
+        question: "Amir melihat seekor anjing besar menyalak dengan kuat di hadapannya.\nApakah emosi Amir?",
+        options: [
+          { text: "Takut", emoji: "😨", isCorrect: true },
+          { text: "Gembira", emoji: "😊", isCorrect: false },
+          { text: "Sedih", emoji: "😢", isCorrect: false }
+        ]
+      },
+      {
+        id: 9,
+        question: "Lina berjaya menyiapkan lukisan yang cantik dan menunjukkan hasilnya kepada guru.\nApakah emosi Lina?",
+        options: [
+          { text: "Sedih", emoji: "😢", isCorrect: false },
+          { text: "Gembira", emoji: "😊", isCorrect: true },
+          { text: "Marah", emoji: "😡", isCorrect: false }
+        ]
+      },
+      {
+        id: 10,
+        question: "Rafi terjatuh ketika bermain dan menangis kerana lututnya sakit.\nApakah emosi Rafi?",
+        options: [
+          { text: "Takut", emoji: "😨", isCorrect: false },
+          { text: "Marah", emoji: "😡", isCorrect: false },
+          { text: "Sedih", emoji: "😢", isCorrect: true }
+        ]
+      }
+    ];
+
+    /* ==========================================================================
+       2. KEADAAN PERMAINAN (GAME STATE)
+       ========================================================================== */
+    let currentQuestionIndex = 0;
+    let score = 0;
+    let lives = 3;
+    let correctCount = 0;
+    let wrongCount = 0;
+    let timeRemaining = 600; // 10 Minit (600 Saat)
+    let timerInterval = null;
+    let isGameActive = false;
+
+    // Hover & Lock Target State
+    let hoveredOptionIndex = -1;
+    let hoverStartTime = 0;
+    const LOCK_DURATION = 1000; // 1 Saat untuk lock
+    let lockedOptionIndex = -1;
+    let isAttacking = false;
+    let attackCooldown = false;
+
+    // Hand Movement Tracking & Pull Back Gesture State
+    let handHistoryZ = [];
+    let useMouseFallback = false;
+
+    /* ==========================================================================
+       3. WEB AUDIO API SYNTHESIZER (BUNYI & MUZIK)
+       ========================================================================== */
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Bunyi Sambaran Guruh & Petir
+    function playThunderSound() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+
+      // Oscillators & Noise Generator untuk bunyi sambaran guruh
+      const bufferSize = audioCtx.sampleRate * 1.2;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, now);
+      filter.frequency.exponentialRampToValueAtTime(50, now + 1.0);
+
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(1.0, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 1.1);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      noise.start(now);
+
+      // Zap Pitch Frekuensi Tinggi
+      const osc = audioCtx.createOscillator();
+      const oscGain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(40, now + 0.3);
+
+      oscGain.gain.setValueAtTime(0.5, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+      osc.connect(oscGain);
+      oscGain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    }
+
+    // Bunyi Jawapan Betul (Chime Ceria)
+    function playCorrectSound() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+      notes.forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, now + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + idx * 0.08);
+        osc.stop(now + idx * 0.08 + 0.3);
+      });
+    }
+
+    // Bunyi Jawapan Salah (Buzzer)
+    function playWrongSound() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(150, now);
+      osc.frequency.linearRampToValueAtTime(80, now + 0.4);
+
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    }
+
+    // Bunyi Lock Target Charge
+    function playLockSound() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    }
+
+
+    /* ==========================================================================
+       4. ELEMEN DOM & INISIALISASI ANTIMUKA
+       ========================================================================== */
+    const questionTextEl = document.getElementById('questionText');
+    const optionsContainerEl = document.getElementById('optionsContainer');
+    const questionNumEl = document.getElementById('questionNum');
+    const scoreTextEl = document.getElementById('scoreText');
+    const timerTextEl = document.getElementById('timerText');
+    const livesContainerEl = document.getElementById('livesContainer');
+    const handCursorEl = document.getElementById('handCursor');
+    const cursorIconEl = document.getElementById('cursorIcon');
+
+    // Modals
+    const startModal = document.getElementById('startModal');
+    const howToModal = document.getElementById('howToModal');
+    const endModal = document.getElementById('endModal');
+    const startGameBtn = document.getElementById('startGameBtn');
+    const howToPlayBtn = document.getElementById('howToPlayBtn');
+    const closeHowToBtn = document.getElementById('closeHowToBtn');
+    const restartGameBtn = document.getElementById('restartGameBtn');
+    const toggleMouseBtn = document.getElementById('toggleMouseBtn');
+
+    // Camera & Canvas
+    const webcamVideo = document.getElementById('webcamVideo');
+    const webcamCanvas = document.getElementById('webcamCanvas');
+    const webcamCtx = webcamCanvas.getContext('2d');
+    const camStatusOverlay = document.getElementById('camStatusOverlay');
+    const camStatusText = document.getElementById('camStatusText');
+    const gestureBadge = document.getElementById('gestureBadge');
+    const gestureBadgeIcon = document.getElementById('gestureBadgeIcon');
+    const gestureBadgeText = document.getElementById('gestureBadgeText');
+
+    // FX Canvas
+    const fxCanvas = document.getElementById('fxCanvas');
+    const fxCtx = fxCanvas.getContext('2d');
+
+    function resizeFxCanvas() {
+      fxCanvas.width = window.innerWidth;
+      fxCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeFxCanvas);
+    resizeFxCanvas();
+
+    /* ==========================================================================
+       5. LOGIK UTAMA PERMAINAN (GAMEPLAY FUNCTIONS)
+       ========================================================================== */
+    function startGame() {
+      initAudio();
+      currentQuestionIndex = 0;
+      score = 0;
+      lives = 3;
+      correctCount = 0;
+      wrongCount = 0;
+      timeRemaining = 600;
+      isGameActive = true;
+      lockedOptionIndex = -1;
+      hoveredOptionIndex = -1;
+      isAttacking = false;
+      attackCooldown = false;
+
+      updateStatsUI();
+      renderQuestion();
+      startTimer();
+
+      startModal.classList.add('hidden');
+      endModal.classList.add('hidden');
+
+      if (!useMouseFallback) {
+        initMediaPipeHands();
+      }
+    }
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (!isGameActive) return;
+        timeRemaining--;
+        const mins = Math.floor(timeRemaining / 60).toString().padStart(2, '0');
+        const secs = (timeRemaining % 60).toString().padStart(2, '0');
+        timerTextEl.textContent = `${mins}:${secs}`;
+
+        if (timeRemaining <= 0) {
+          endGame(false, "Masa Telah Tamat!");
+        }
+      }, 1000);
+    }
+
+    function updateStatsUI() {
+      scoreTextEl.textContent = score;
+      questionNumEl.textContent = `${currentQuestionIndex + 1}/${questionsData.length}`;
+      
+      // Update Nyawa Hati
+      livesContainerEl.innerHTML = '';
+      for (let i = 0; i < 3; i++) {
+        const heartSpan = document.createElement('span');
+        heartSpan.className = 'heart transition-all duration-300';
+        heartSpan.textContent = i < lives ? '❤️' : '🖤';
+        if (i >= lives) heartSpan.classList.add('opacity-40', 'scale-90');
+        livesContainerEl.appendChild(heartSpan);
+      }
+    }
+
+    function renderQuestion() {
+      const q = questionsData[currentQuestionIndex];
+      questionTextEl.innerHTML = q.question.replace('\n', '<br><span class="text-yellow-300 font-extrabold">');
+      
+      optionsContainerEl.innerHTML = '';
+      lockedOptionIndex = -1;
+      hoveredOptionIndex = -1;
+
+      q.options.forEach((opt, idx) => {
+        const card = document.createElement('div');
+        card.dataset.index = idx;
+        card.className = `option-card relative bg-slate-900/90 border-2 border-slate-700/80 hover:border-yellow-400/80 rounded-2xl p-4 md:p-5 flex items-center justify-between cursor-pointer transition-all duration-200 transform select-none shadow-lg overflow-hidden group`;
+        
+        card.innerHTML = `
+          <div class="flex items-center gap-4 z-10">
+            <div class="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-slate-800 border border-slate-600 flex items-center justify-center font-extrabold text-lg md:text-xl text-amber-400 group-hover:bg-amber-400 group-hover:text-slate-950 transition-colors">
+              ${String.fromCharCode(65 + idx)}
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-3xl md:text-4xl">${opt.emoji}</span>
+              <span class="text-lg md:text-2xl font-bold text-white tracking-wide">${opt.text}</span>
+            </div>
+          </div>
+
+          <!-- Lock Indicator Badge -->
+          <div class="lock-status hidden z-10 items-center gap-1 bg-yellow-400 text-slate-950 font-black px-3 py-1 rounded-full text-xs uppercase shadow-md animate-pulse">
+            ⚡ TERSASAR! GENGGAM UTK SERANG
+          </div>
+
+          <!-- Progress Bar Kunci Jawapan -->
+          <div class="progress-container absolute bottom-0 left-0 h-2 bg-slate-800 w-full">
+            <div class="lock-progress-bar h-full bg-gradient-to-r from-yellow-400 to-cyan-400 w-0"></div>
+          </div>
+        `;
+
+        // Sokongan Tetikus / Sentuhan Direct Click
+        card.addEventListener('click', () => {
+          if (!isGameActive || isAttacking || attackCooldown) return;
+          lockedOptionIndex = idx;
+          highlightLockedOption(idx);
+          executeThunderAttack(idx);
+        });
+
+        optionsContainerEl.appendChild(card);
+      });
+    }
+
+    /* ==========================================================================
+       6. LOGIK LOCKING & GESTURE ATTACK
+       ========================================================================== */
+    function checkCursorHover(x, y) {
+      if (!isGameActive || isAttacking) return;
+
+      const cards = document.querySelectorAll('.option-card');
+      let foundHover = -1;
+
+      cards.forEach((card, idx) => {
+        const rect = card.getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          foundHover = idx;
+        }
+      });
+
+      const now = Date.now();
+
+      if (foundHover !== -1) {
+        if (hoveredOptionIndex !== foundHover) {
+          hoveredOptionIndex = foundHover;
+          hoverStartTime = now;
+        } else {
+          // Kira kemajuan penguncian (Lock Progress)
+          const elapsed = now - hoverStartTime;
+          const progressPercent = Math.min(100, (elapsed / LOCK_DURATION) * 100);
+          
+          updateLockProgressBar(foundHover, progressPercent);
+
+          if (progressPercent >= 100 && lockedOptionIndex !== foundHover) {
+            lockedOptionIndex = foundHover;
+            playLockSound();
+            highlightLockedOption(foundHover);
+          }
+        }
+      } else {
+        // Reset jika cursor keluar dari kad
+        if (hoveredOptionIndex !== -1 && lockedOptionIndex === -1) {
+          updateLockProgressBar(hoveredOptionIndex, 0);
+        }
+        hoveredOptionIndex = -1;
+      }
+    }
+
+    function updateLockProgressBar(cardIndex, percent) {
+      const cards = document.querySelectorAll('.option-card');
+      cards.forEach((card, idx) => {
+        const bar = card.querySelector('.lock-progress-bar');
+        if (idx === cardIndex) {
+          bar.style.width = `${percent}%`;
+        } else if (idx !== lockedOptionIndex) {
+          bar.style.width = '0%';
+        }
+      });
+    }
+
+    function highlightLockedOption(index) {
+      const cards = document.querySelectorAll('.option-card');
+      cards.forEach((card, idx) => {
+        const statusBadge = card.querySelector('.lock-status');
+        if (idx === index) {
+          card.classList.add('locking-card', 'glow-yellow', 'border-yellow-400');
+          card.classList.remove('border-slate-700/80');
+          statusBadge.classList.remove('hidden');
+          statusBadge.classList.add('flex');
+        } else {
+          card.classList.remove('locking-card', 'glow-yellow', 'border-yellow-400');
+          card.classList.add('border-slate-700/80');
+          statusBadge.classList.add('hidden');
+          statusBadge.classList.remove('flex');
+        }
+      });
+    }
+
+    // Sambaran Petir & Pengesahan Jawapan
+    function executeThunderAttack(targetIndex) {
+      if (attackCooldown || !isGameActive) return;
+      isAttacking = true;
+      attackCooldown = true;
+
+      const targetCard = document.querySelectorAll('.option-card')[targetIndex];
+      const rect = targetCard.getBoundingClientRect();
+      const targetX = rect.left + rect.width / 2;
+      const targetY = rect.top + rect.height / 2;
+
+      // 1. Mainkan Bunyi Guruh & Lukis Kesan Petir
+      playThunderSound();
+      triggerLightningFx(targetX, targetY);
+
+      // 2. Kesan Shake pada Kad Jawapan
+      targetCard.classList.add('shake-effect');
+
+      setTimeout(() => {
+        targetCard.classList.remove('shake-effect');
+        verifyAnswer(targetIndex);
+      }, 600);
+    }
+
+    function verifyAnswer(chosenIndex) {
+      const q = questionsData[currentQuestionIndex];
+      const isCorrect = q.options[chosenIndex].isCorrect;
+      const targetCard = document.querySelectorAll('.option-card')[chosenIndex];
+
+      if (isCorrect) {
+        playCorrectSound();
+        score += 10;
+        correctCount++;
+        targetCard.classList.remove('border-yellow-400', 'glow-yellow');
+        targetCard.classList.add('bg-emerald-950/90', 'border-emerald-400', 'glow-cyan');
+        targetCard.querySelector('.lock-status').innerHTML = '✅ BETUL! SYABAS!';
+        targetCard.querySelector('.lock-status').className = 'lock-status flex items-center gap-1 bg-emerald-400 text-slate-950 font-black px-3 py-1 rounded-full text-xs uppercase shadow-md';
+      } else {
+        playWrongSound();
+        lives--;
+        wrongCount++;
+        targetCard.classList.remove('border-yellow-400', 'glow-yellow');
+        targetCard.classList.add('bg-rose-950/90', 'border-rose-500', 'glow-red');
+        targetCard.querySelector('.lock-status').innerHTML = '❌ SALAH!';
+        targetCard.querySelector('.lock-status').className = 'lock-status flex items-center gap-1 bg-rose-500 text-white font-black px-3 py-1 rounded-full text-xs uppercase shadow-md';
+      }
+
+      updateStatsUI();
+
+      // Semak Kelayakan atau Terus ke Soalan Seterusnya
+      setTimeout(() => {
+        isAttacking = false;
+        attackCooldown = false;
+
+        if (lives <= 0) {
+          endGame(false, "Kehabisan Nyawa!");
+        } else {
+          currentQuestionIndex++;
+          if (currentQuestionIndex >= questionsData.length) {
+            endGame(true, "Misi Selesai!");
+          } else {
+            renderQuestion();
+          }
+        }
+      }, 1200);
+    }
+
+    function endGame(isWin, reasonText) {
+      isGameActive = false;
+      clearInterval(timerInterval);
+
+      const endTitleEl = document.getElementById('endTitle');
+      const endSubtitleEl = document.getElementById('endSubtitle');
+      const endEmojiEl = document.getElementById('endEmoji');
+
+      if (isWin) {
+        endTitleEl.textContent = "TAHNIAH, MISI SELESAI! ⚡";
+        endSubtitleEl.textContent = "Hebat! Anda seorang pakar emosi yang bijak!";
+        endEmojiEl.textContent = "🏆";
+      } else {
+        endTitleEl.textContent = "MISI TAMAT!";
+        endSubtitleEl.textContent = `${reasonText} Jangan putus asa, cuba lagi!`;
+        endEmojiEl.textContent = "⚡";
+      }
+
+      // Format Masa Digunakan
+      const timeUsed = 600 - timeRemaining;
+      const mins = Math.floor(timeUsed / 60).toString().padStart(2, '0');
+      const secs = (timeUsed % 60).toString().padStart(2, '0');
+
+      document.getElementById('endScore').textContent = score;
+      document.getElementById('endTime').textContent = `${mins}:${secs}`;
+      document.getElementById('endCorrect').textContent = `${correctCount} / ${questionsData.length}`;
+      document.getElementById('endWrong').textContent = wrongCount;
+
+      endModal.classList.remove('hidden');
+    }
+
+    /* ==========================================================================
+       7. KESAN KHAS CANVASES (LIGHTNING BOLT FX)
+       ========================================================================== */
+    function triggerLightningFx(targetX, targetY) {
+      const startX = window.innerWidth / 2 + (Math.random() * 200 - 100);
+      const startY = 0;
+      
+      let segments = [];
+      let currentX = startX;
+      let currentY = startY;
+      
+      segments.push({ x: currentX, y: currentY });
+
+      const steps = 12;
+      const dy = (targetY - startY) / steps;
+
+      for (let i = 0; i < steps; i++) {
+        currentY += dy;
+        currentX += (Math.random() - 0.5) * 80;
+        segments.push({ x: currentX, y: currentY });
+      }
+      segments.push({ x: targetX, y: targetY });
+
+      // Frame animasi kilat menyambar
+      let alpha = 1.0;
+      function animateBolt() {
+        if (alpha <= 0) {
+          fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+          return;
+        }
+
+        fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+        // Kilat utama
+        fxCtx.beginPath();
+        fxCtx.moveTo(segments[0].x, segments[0].y);
+        for (let i = 1; i < segments.length; i++) {
+          fxCtx.lineTo(segments[i].x, segments[i].y);
+        }
+        fxCtx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+        fxCtx.lineWidth = 6;
+        fxCtx.shadowColor = '#06b6d4';
+        fxCtx.shadowBlur = 25;
+        fxCtx.stroke();
+
+        // Glow Kilat Kuning
+        fxCtx.beginPath();
+        fxCtx.moveTo(segments[0].x, segments[0].y);
+        for (let i = 1; i < segments.length; i++) {
+          fxCtx.lineTo(segments[i].x, segments[i].y);
+        }
+        fxCtx.strokeStyle = `rgba(250, 204, 21, ${alpha * 0.7})`;
+        fxCtx.lineWidth = 14;
+        fxCtx.shadowColor = '#facc15';
+        fxCtx.shadowBlur = 35;
+        fxCtx.stroke();
+
+        alpha -= 0.08;
+        requestAnimationFrame(animateBolt);
+      }
+
+      animateBolt();
+    }
+
+    /* ==========================================================================
+       8. MEDIAPIPE HAND TRACKING & KAMERA UTILS
+       ========================================================================== */
+    let hands = null;
+    let camera = null;
+
+    function initMediaPipeHands() {
+      camStatusText.textContent = "Memulakan Pengesanan Tangan...";
+
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+      });
+
+      hands.onResults(onHandResults);
+
+      camera = new Camera(webcamVideo, {
+        onFrame: async () => {
+          await hands.send({ image: webcamVideo });
+        },
+        width: 640,
+        height: 480
+      });
+
+      camera.start().then(() => {
+        camStatusOverlay.classList.add('hidden');
+        handCursorEl.classList.remove('hidden');
+        gestureBadge.classList.remove('hidden');
+      }).catch((err) => {
+        console.error("Gagal Mengakses Kamera:", err);
+        camStatusText.textContent = "Kamera Tidak Ditemui / Diizin";
+        camStatusOverlay.classList.remove('hidden');
+        switchToMouseMode();
+      });
+    }
+
+    function onHandResults(results) {
+      // Lukis Paparan Kamera pada Canvas
+      webcamCtx.save();
+      webcamCtx.clearRect(0, 0, webcamCanvas.width, webcamCanvas.height);
+      webcamCtx.drawImage(results.image, 0, 0, webcamCanvas.width, webcamCanvas.height);
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+
+        // Kedudukan Tapak Tangan (Palm Center: Landmark 9 - Middle Finger MCP)
+        const palmX = landmarks[9].x;
+        const palmY = landmarks[9].y;
+
+        // Tukar Koordinat Terbalik (Mirroring) ke Skrin Web
+        const screenX = (1 - palmX) * window.innerWidth;
+        const screenY = palmY * window.innerHeight;
+
+        // Kemaskini Kedudukan Penunjuk Cursor Tangan
+        handCursorEl.style.left = `${screenX}px`;
+        handCursorEl.style.top = `${screenY}px`;
+
+        // Semak Tindanan Cursor pada Kad Jawapan
+        checkCursorHover(screenX, screenY);
+
+        // Pengesanan Gesture: Genggaman Tangan (Fist Clench)
+        const isFist = detectFistGesture(landmarks);
+
+        // Pengesanan Gesture: Tarik Tangan Ke Belakang (Pull Back Z-axis)
+        const isPullBack = detectPullBackGesture(landmarks[0].z);
+
+        if (isFist) {
+          gestureBadgeIcon.textContent = '✊';
+          gestureBadgeText.textContent = 'Genggaman Dikesan!';
+          cursorIconEl.textContent = '✊';
+
+          if (lockedOptionIndex !== -1 && !isAttacking && !attackCooldown) {
+            executeThunderAttack(lockedOptionIndex);
+          }
+        } else if (isPullBack) {
+          gestureBadgeIcon.textContent = '⬇️';
+          gestureBadgeText.textContent = 'Gerakan Tarik Dikesan!';
+          cursorIconEl.textContent = '⚡';
+
+          if (lockedOptionIndex !== -1 && !isAttacking && !attackCooldown) {
+            executeThunderAttack(lockedOptionIndex);
+          }
+        } else {
+          gestureBadgeIcon.textContent = '✋';
+          gestureBadgeText.textContent = 'Tangan Dikesan';
+          cursorIconEl.textContent = '✋';
+        }
+      } else {
+        gestureBadgeIcon.textContent = '❓';
+        gestureBadgeText.textContent = 'Cari Tangan...';
+      }
+
+      webcamCtx.restore();
+    }
+
+    // Algorithma Pengesanan Genggaman Tangan (Clench Fist)
+    function detectFistGesture(landmarks) {
+      // Bandingkan jarak Hujung Jari (Tips: 8, 12, 16, 20) dengan Pangkal Tangan (Wrist: 0)
+      const wrist = landmarks[0];
+      const fingerTips = [8, 12, 16, 20];
+      const fingerMCPs = [5, 9, 13, 17];
+
+      let foldedFingers = 0;
+
+      for (let i = 0; i < fingerTips.length; i++) {
+        const tip = landmarks[fingerTips[i]];
+        const mcp = landmarks[fingerMCPs[i]];
+
+        const distTipToWrist = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+        const distMcpToWrist = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y);
+
+        // Jika hujung jari lebih dekat dengan pergelangan tangan berbanding pangkal jari
+        if (distTipToWrist < distMcpToWrist * 1.1) {
+          foldedFingers++;
+        }
+      }
+
+      return foldedFingers >= 3;
+    }
+
+    // Algorithma Pengesanan Gerakan Tarik Tangan (Pull Back Z Delta)
+    function detectPullBackGesture(currentZ) {
+      handHistoryZ.push(currentZ);
+      if (handHistoryZ.length > 8) handHistoryZ.shift();
+
+      if (handHistoryZ.length >= 8) {
+        const deltaZ = handHistoryZ[handHistoryZ.length - 1] - handHistoryZ[0];
+        // Perubahan Z positif menunjukkan tangan menjauhi kamera
+        if (deltaZ > 0.12) {
+          handHistoryZ = []; // Reset selepas mengesan
+          return true;
+        }
+      }
+      return false;
+    }
+
+    /* ==========================================================================
+       9. MOD FALLBACK TETIKUS / SENTUHAN
+       ========================================================================== */
+    function switchToMouseMode() {
+      useMouseFallback = true;
+      handCursorEl.classList.add('hidden');
+      camStatusText.textContent = "Mod Tetikus & Skrin Sentuh Aktif";
+      camStatusOverlay.classList.remove('hidden');
+      toggleMouseBtn.innerHTML = "<span>✋</span> Tukar ke Mod Webcam Tangan";
+    }
+
+    toggleMouseBtn.addEventListener('click', () => {
+      if (useMouseFallback) {
+        useMouseFallback = false;
+        toggleMouseBtn.innerHTML = "<span>🖱️</span> Gunakan Klik Tetikus / Skrin Sentuh";
+        initMediaPipeHands();
+      } else {
+        switchToMouseMode();
+      }
+    });
+
+    // Tetikus sebagai Cursor Simulasi jika Webcam Mati
+    window.addEventListener('mousemove', (e) => {
+      if (useMouseFallback && isGameActive) {
+        checkCursorHover(e.clientX, e.clientY);
+      }
+    });
+
+    /* ==========================================================================
+       10. EVENT LISTENERS PENGENDALI MODAL
+       ========================================================================== */
+    startGameBtn.addEventListener('click', startGame);
+
+    howToPlayBtn.addEventListener('click', () => {
+      howToModal.classList.remove('hidden');
+    });
+
+    closeHowToBtn.addEventListener('click', () => {
+      howToModal.classList.add('hidden');
+    });
+
+    restartGameBtn.addEventListener('click', startGame);
+
+  </script>
+</body>
+</html>
